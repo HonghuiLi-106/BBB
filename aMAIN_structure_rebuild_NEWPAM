@@ -1,0 +1,94 @@
+clear all;
+close all;
+clc;
+
+%%  基本参数
+x=300;%行数
+y=300;%列数
+z=512;%深数
+type='ubit12';%读取/存储数据类型
+location=['D:\肝脏pam原始数据\2024-02-29' '\'];%数据文件所在文件夹
+data_list=dir([location,'B-0_20240229-025827_1_300_300_512_PA1.bin']);%获取文件夹下所有dat文件
+
+%%   滤波&模板参数
+%高斯&中值滤波
+gaumed3dbutt=0;%三维
+gaumed2dbutt=0;%二维
+sigma3d=0.4;%高斯滤波参量
+sigma2d=0.4;
+%模板参数
+th1=150;%阈值约束条件
+th2=10;%去除孤立区域，使图像美观
+
+%%   绘图参数
+%形态图参数
+cbmax_MAP=2500;
+cbmin_MAP=100;
+%默认为hot图colorbar，勿更换
+MAPcmapfilename='MAPcmap.mat';
+MAPcmapvarname='MAPcmap';
+%深度图参数，设定colorbar及光影效果
+cbmax_depth=590;
+cbmin_depth=0;
+depthcmapfilename='depthcmap.mat';
+depthcmapvarname='depthcmap';
+
+%%   存储设置
+%图片保存开关
+sbutt_MAPfig=0;
+sbutt_depthshaderfig=0;
+%数据保存开关及格式类型（mat或者dat）
+sbutt_MAP=0;
+smode_MAP='mat';
+sbutt_depth=0;
+smode_depth='mat';
+
+%%  程序
+
+for file_i=1:length(data_list)%批量处理数据
+fileloc=[location data_list(file_i).name];
+fid=fopen([location data_list(file_i).name]);
+data3d=fread(fid,type);
+data3d=reshape(data3d,[z,x,y]);
+
+%%
+data3d=med_gauss_fun(data3d,'3d',gaumed3dbutt,sigma3d);
+[data2d,data2d_depth]=struc_depth_fun(data3d);
+data2d=med_gauss_fun(data2d,'2d',gaumed2dbutt,sigma2d);
+
+mask=mask_fun(data2d,th1,th2);
+
+%为深度使用模板，为MAP使用模板，导入cmap函数前置工作
+data2d_depth(mask<1)=0;
+MAP=data2d;
+MAP(mask<1)=0;
+
+%自定义colorbar
+[depthmanual,depthcmap]=cmap_fun(data2d_depth,cbmin_depth,cbmax_depth,depthcmapfilename,depthcmapvarname,1);
+[MAPmanual,~]=cmap_fun(MAP,cbmin_MAP,cbmax_MAP,MAPcmapfilename,MAPcmapvarname,1);
+
+%增加光影效果
+depthshader=shader_fun(depthmanual,MAPmanual,depthcmap,1);
+
+%绘图存图区
+figure;imagesc(data2d');axis square;axis([1 x 1 y]);colormap(hot);colorbar;caxis([cbmin_MAP cbmax_MAP]);title('MAP');save_fun(gcf,fileloc,'fig',[],'_MAP',sbutt_MAPfig);
+figure;imagesc(data2d_depth');axis square;axis([1 x 1 y]);colormap(depthcmap);colorbar;caxis([cbmin_depth cbmax_depth]);title('depth');
+figure;imagesc(permute(depthshader,[2 1 3]));axis square;axis([1 x 1 y]);colormap(depthcmap);colorbar;caxis([cbmin_depth cbmax_depth]);title('depthshader');save_fun(gcf,fileloc,'fig',[],'_Depthshader',sbutt_depthshaderfig);
+%数据存储区
+save_fun(data2d,fileloc,smode_MAP,type,'_MAP',sbutt_MAP);
+save_fun(data2d_depth,fileloc,smode_depth,type,'_Depth',sbutt_depth);
+end
+
+%% 作废
+% 格式转换部分
+% if trans_switch==1||trans_switch==2
+% fid=fopen([location data_list(file_i).name],'rb+');
+% fid_trans=fopen([location data_list(file_i).name(1:(length(data_list(file_i).name)-4)) '_uint16.dat'],'w+');
+% rawdata=fread(fid,[z x*y],'ubit12=>uint16');
+% fwrite(fid_trans,rawdata,type);
+% fclose(fid);
+% fclose(fid_trans);
+% end
+
+
+
