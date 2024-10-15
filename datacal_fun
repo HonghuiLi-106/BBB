@@ -1,0 +1,36 @@
+function ave=datacal_fun(type,image1,data1,mask1,filename,varname,datacalbutt)
+switch datacalbutt
+    case 1
+        ave=sum(data1,'all')/nnz(mask1);
+    case 2
+        load(filename);
+        eval(['mask2=' varname ';']);
+
+        [sizex1,sizey1]=size(mask1);
+        [sizex2,sizey2]=size(mask2);
+        if sizex1~=sizex2||sizey1~=sizey2
+            error('定域计算模板不匹配');
+        end
+
+        mask=mask1.*mask2;
+        data1(mask<1)=0;
+        ave=sum(data1,"all")/nnz(mask);
+
+        switch ndims(image1)
+            case 3
+                maskrgb=zeros(sizex1,sizey1,3);
+                maskrgb(:,:,1)=mask;
+                maskrgb(:,:,2)=mask;
+                maskrgb(:,:,3)=mask;
+                image1(maskrgb<1)=0;
+                figure;imagesc(permute(image1,[2 1 3]));axis square;title([type '  cal area']);
+            case 2
+                image1(mask<1)=0;
+                figure;imagesc(image1');axis square;colormap("turbo");title([type '  cal area']);
+            otherwise
+                error('输入图像异常');
+        end
+    otherwise
+        %不作任何处理
+end
+end
