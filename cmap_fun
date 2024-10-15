@@ -1,0 +1,27 @@
+function [data_cmap,cmap]=cmap_fun(data,minrange,maxrange,filename,varname,cmapbutt)
+switch cmapbutt
+    case 1
+        [sizex,sizey]=size(data);
+        data_cmap=zeros(sizex,sizey,3);
+        load(filename);
+        eval(['cmap=' varname ';']);
+        clength=size(cmap,1);
+
+        data(data<minrange)=minrange;
+        data(data>maxrange)=maxrange;
+
+        loc_RGB=round(interp1(linspace(minrange,maxrange,clength),1:clength,data));
+
+        for xi=1:1:sizex
+            for yi=1:1:sizey
+                data_cmap(xi,yi,:)=cmap(loc_RGB(xi,yi),:);
+            end
+        end
+    case 0
+        data_cmap=data;
+        figure;cmap=colormap("jet");close(gcf);
+    otherwise
+        error('图像着色开关异常');
+end
+end
+    
