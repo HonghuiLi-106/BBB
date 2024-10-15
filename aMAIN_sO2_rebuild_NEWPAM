@@ -1,0 +1,142 @@
+clear all;
+close all;
+clc;
+
+%%  基本参数
+x=1000;%行数
+y=1000;%列数
+z=512;%深数
+ky559=0;%532图片挪位，正右移，负左移
+kx559=0;%正下移，负上移
+type='ubit12';%读取/存储数据类型
+location=['C:\Users\imKev\Desktop\temp\ZBW' '\'];%数据文件所在文件夹
+filename532='1-100_20211114-014704_4_1000_1000_512_PA1.bin';
+filename559=[filename532(1:(length(filename532)-5)) '2.bin'];
+
+%%   血氧参数
+laserrate=1; %光强比例：532:558
+normode=3;%计算血氧归一化方式，1为保留[0 1]外数据，2为小于0数据置零，3为小于0数据置零且大于1数据置一
+eo_532=43876;%HbO2摩尔吸光系数（532）
+ed_532=40584;%HbR摩尔吸光系数（532）
+eo_559=33456;%HbO2摩尔吸光系数（558）
+ed_559=54164;%HbR摩尔吸光系数（558）
+
+%%   滤波&模板参数
+%高斯&中值滤波
+gaumed3dbutt=0;%三维
+gaumed2dbutt=1;%二维
+sigma3d=1.1;%高斯滤波参量
+sigma2d=1.1;
+%血氧专用均值滤波
+l_sO2f=5;%均值方块长度
+h_sO2f=25;%深度约束条件
+%模板参数
+th1=250;%阈值约束条件
+th2=10;%去除孤立区域，使图像美观
+
+%%   绘图参数
+%形态图参数
+cbmax_MAP=2000;
+cbmin_MAP=0;
+%默认为hot图colorbar，勿更换
+MAPcmapfilename='MAPcmap.mat';
+MAPcmapvarname='MAPcmap';
+%血氧图参数,设定colorbar及光影效果
+cbmax_sO2=1;
+cbmin_sO2=0;
+sO2cmapfilename='sO2cmap.mat';
+sO2cmapvarname='sO2cmap';
+%深度图参数，设定colorbar及光影效果
+cbmax_depth=500;
+cbmin_depth=0;
+depthcmapfilename='depthcmap.mat';
+depthcmapvarname='depthcmap';
+
+%%    定域计算参数
+%血氧
+sO2calmaskfilename='sO2calmask.mat';
+sO2calmaskvarname='sO2calmask';
+sO2calbutt=1;%计算开关，0为不计算，1为全域计算，2为自定域计算，需提前导入模板，否则报错
+
+%%   存储设置
+%图片保存开关
+sbutt_532fig=0;
+sbutt_559fig=0;
+sbutt_depthshaderfig=0;
+sbutt_sO2fshaderfig=0;
+%数据保存开关及格式类型（mat或者dat）
+sbutt_532MAP=0;
+smode_532MAP='mat';
+sbutt_559MAP=0;
+smode_559MAP='mat';
+sbutt_depth=0;
+smode_depth='mat';
+sbutt_sO2=0;
+smode_sO2='mat';
+sbutt_sO2f=0;
+smode_sO2f='mat';
+
+%%   程序勿管
+fileloc532=[location filename532];
+fileloc559=[location filename559];
+fid532=fopen(fileloc532);
+fid559=fopen(fileloc559);
+data3d_532=fread(fid532,type);
+data3d_559=fread(fid559,type);
+data3d_532=reshape(data3d_532,[z,x,y]);
+data3d_559=reshape(data3d_559,[z,x,y]);
+
+data3d_532=med_gauss_fun(data3d_532,'3d',gaumed3dbutt,sigma3d);
+data3d_559=med_gauss_fun(data3d_559,'3d',gaumed3dbutt,sigma3d);
+
+[data2d_532,data2d_depth]=struc_depth_fun(data3d_532);
+[data2d_559,~]=struc_depth_fun(data3d_559);
+
+data2d_532=med_gauss_fun(data2d_532,'2d',gaumed2dbutt,sigma2d);
+data2d_559=med_gauss_fun(data2d_559,'2d',gaumed2dbutt,sigma2d);
+
+mask=mask_fun(data2d_532,th1,th2);
+
+%调整559图片位置
+data2d_559=circshift(data2d_559,ky559,2);
+data2d_559=circshift(data2d_559,kx559,1);
+
+%计算血氧
+[data2d_sO2,errormap]=sO2_fun(data2d_532,data2d_559,[eo_532,eo_559,ed_532,ed_559],laserrate,normode,data2d_depth,mask,l_sO2f,h_sO2f);
+data2d_sO2f=med_gauss_fun(data2d_sO2,'2d',gaumed2dbutt,sigma2d);
+
+%为深度使用模板，为MAP使用模板，导入cmap函数前置工作
+data2d_depth(mask<1)=0;
+MAP=data2d_532;
+MAP(mask<1)=0;
+
+%自定义colorbar
+[depthmanual,depthcmap]=cmap_fun(data2d_depth,cbmin_depth,cbmax_depth,depthcmapfilename,depthcmapvarname,1);
+[sO2fmanual,sO2cmap]=cmap_fun(data2d_sO2f,cbmin_sO2,cbmax_sO2,sO2cmapfilename,sO2cmapvarname,1);
+[MAPmanual,~]=cmap_fun(MAP,cbmin_MAP,cbmax_MAP,MAPcmapfilename,MAPcmapvarname,1);
+
+%增加光影效果
+depthshader=shader_fun(depthmanual,MAPmanual,depthcmap,1);
+sO2fshader=shader_fun(sO2fmanual,MAPmanual,sO2cmap,1);
+
+%绘图存图区
+figure;imagesc(data2d_532');axis square;axis([1 x 1 y]);colormap(hot);colorbar;caxis([cbmin_MAP cbmax_MAP]);title('532 MAP');save_fun(gcf,fileloc532,'fig',[],'_532MAP',sbutt_532fig);
+figure;imagesc(data2d_559');axis square;axis([1 x 1 y]);colormap(hot);colorbar;caxis([cbmin_MAP cbmax_MAP]);title('559 MAP');save_fun(gcf,fileloc559,'fig',[],'_559MAP',sbutt_559fig);
+figure;imagesc(data2d_depth');axis square;axis([1 x 1 y]);colormap(depthcmap);colorbar;caxis([cbmin_depth cbmax_depth]);title('depth');
+figure;imagesc(permute(depthshader,[2 1 3]));axis square;axis([1 x 1 y]);colormap(depthcmap);colorbar;caxis([cbmin_depth cbmax_depth]);title('depthshader');save_fun(gcf,fileloc532,'fig',[],'_Depthshader',sbutt_depthshaderfig);
+figure;imagesc(errormap');axis square;axis([1 x 1 y]);colormap(gray);colorbar;caxis([0 1]);title('errormap');
+figure;imagesc(data2d_sO2');axis square;axis([1 x 1 y]);colormap(sO2cmap);colorbar;caxis([cbmin_sO2 cbmax_sO2]);title('sO2');
+figure;imagesc(permute(sO2fshader,[2 1 3]));axis square;axis([1 x 1 y]);colormap(sO2cmap);colorbar;caxis([cbmin_sO2 cbmax_sO2]);title('sO2fshader');save_fun(gcf,fileloc532,'fig',[],'_sO2fshader',sbutt_sO2fshaderfig);
+
+%血氧定域计算
+ave=datacal_fun('sO2',sO2fshader,data2d_sO2f,mask,sO2calmaskfilename,sO2calmaskvarname,sO2calbutt);
+
+
+%数据存储区
+save_fun(data2d_532,fileloc532,smode_532MAP,type,'_532MAP',sbutt_532MAP);
+save_fun(data2d_559,fileloc559,smode_559MAP,type,'_559MAP',sbutt_559MAP);
+save_fun(data2d_depth,fileloc532,smode_depth,type,'_Depth',sbutt_depth);
+save_fun(data2d_sO2,fileloc532,smode_sO2,type,'_sO2',sbutt_sO2);
+save_fun(data2d_sO2f,fileloc532,smode_sO2f,type,'_sO2f',sbutt_sO2f);
+
+
